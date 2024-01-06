@@ -26,30 +26,26 @@ type Entity struct {
 	DeletedAt *time.Time `bson:"deleted_at"`
 }
 
-func (e *Entity) newMongoRecord() {
-	if e == nil {
-		return
-	}
-
-	if e.ID.IsZero() {
-		e.ID = primitive.NewObjectID()
-	}
-
-	if e.CreatedAt.IsZero() {
-		e.CreatedAt = time.Now()
-	}
-
-	if e.UpdatedAt.IsZero() {
-		e.UpdatedAt = time.Now()
+func newRecord(v any) any {
+	return struct {
+		E Entity `bson:",inline"`
+		V any    `bson:",inline"`
+	}{
+		E: Entity{
+			ID:        primitive.NewObjectID(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+		V: v,
 	}
 }
 
-func (e Entity) entity() *Entity {
-	return &e
+func (e Entity) entity() Entity {
+	return e
 }
 
 type entiter interface {
-	entity() *Entity
+	entity() Entity
 }
 
 // Collecter is a interface for mongo collection.
@@ -174,17 +170,15 @@ func NewCollection[T entiter](c *mongo.Collection) Collecter[T] {
 
 // InsertOne insert one document.
 func (c *collection[T]) InsertOne(ctx context.Context, model T) error {
-	model.entity().newMongoRecord()
-	_, err := c.Collection.InsertOne(ctx, model)
+	_, err := c.Collection.InsertOne(ctx, newRecord(model))
 	return err
 }
 
 // InsertMany insert many documents.
 func (c *collection[T]) InsertMany(ctx context.Context, models []T) error {
-	docs := make([]interface{}, len(models))
+	docs := make([]any, len(models))
 	for i, model := range models {
-		model.entity().newMongoRecord()
-		docs[i] = model
+		docs[i] = newRecord(model)
 	}
 
 	_, err := c.Collection.InsertMany(ctx, docs)
