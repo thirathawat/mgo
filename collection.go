@@ -44,8 +44,12 @@ func (e *Entity) newMongoRecord() {
 	}
 }
 
+func (e Entity) entity() *Entity {
+	return &e
+}
+
 type entiter interface {
-	newMongoRecord()
+	entity() *Entity
 }
 
 // Collecter is a interface for mongo collection.
@@ -57,41 +61,41 @@ type Collecter[T any] interface {
 	InsertMany(ctx context.Context, models []T) error
 
 	// FindOne find one document.
-	FindOne(ctx context.Context, options ...SetOption) (*T, error)
+	FindOne(ctx context.Context, options ...Option) (*T, error)
 
 	// FindMany find many documents.
-	FindMany(ctx context.Context, options ...SetOption) ([]T, error)
+	FindMany(ctx context.Context, options ...Option) ([]T, error)
 
 	// UpdateOne update one document.
-	UpdateOne(ctx context.Context, options ...SetOption) error
+	UpdateOne(ctx context.Context, options ...Option) error
 
 	// UpdateMany update many documents.
-	UpdateMany(ctx context.Context, options ...SetOption) error
+	UpdateMany(ctx context.Context, options ...Option) error
 
 	// DeleteOne delete one document.
-	DeleteOne(ctx context.Context, options ...SetOption) error
+	DeleteOne(ctx context.Context, options ...Option) error
 
 	// DeleteMany delete many documents.
-	DeleteMany(ctx context.Context, options ...SetOption) error
+	DeleteMany(ctx context.Context, options ...Option) error
 
 	// SoftDeleteOne soft delete one document by setting deleted_at.
-	SoftDeleteOne(ctx context.Context, options ...SetOption) error
+	SoftDeleteOne(ctx context.Context, options ...Option) error
 
 	// SoftDeleteMany soft delete many documents by setting deleted_at.
-	SoftDeleteMany(ctx context.Context, options ...SetOption) error
+	SoftDeleteMany(ctx context.Context, options ...Option) error
 
 	// Count count documents.
-	Count(ctx context.Context, options ...SetOption) (int64, error)
+	Count(ctx context.Context, options ...Option) (int64, error)
 
 	// Aggregate aggregate documents.
-	Aggregate(ctx context.Context, options ...SetOption) ([]T, error)
+	Aggregate(ctx context.Context, options ...Option) ([]T, error)
 }
 
-// SetOption is a function to set option.
-type SetOption func(*Option)
+// Option is a function to set option.
+type Option func(*option)
 
 // Filter is a function to set filter.
-type Option struct {
+type option struct {
 	// Filter is a filter to find.
 	Filter bson.M
 
@@ -115,7 +119,7 @@ type Option struct {
 }
 
 // Filter is a function to set filter.
-func (o Option) findOptions() *options.FindOptions {
+func (o option) findOptions() *options.FindOptions {
 	return &options.FindOptions{
 		Sort:       o.Sort,
 		Skip:       o.Skip,
@@ -124,7 +128,7 @@ func (o Option) findOptions() *options.FindOptions {
 	}
 }
 
-func (o *Option) setUpdate() {
+func (o *option) setUpdate() {
 	if o.Update == nil {
 		o.Update = bson.M{}
 	}
@@ -138,7 +142,7 @@ func (o *Option) setUpdate() {
 	}
 }
 
-func (o *Option) setSoftDelete() {
+func (o *option) setSoftDelete() {
 	if o.Update == nil {
 		o.Update = bson.M{}
 	}
@@ -149,8 +153,8 @@ func (o *Option) setSoftDelete() {
 }
 
 // Filter is a function to set filter.
-func bindOptions(options ...SetOption) *Option {
-	opt := &Option{}
+func bindOptions(options ...Option) *option {
+	opt := &option{}
 	for _, option := range options {
 		option(opt)
 	}
@@ -170,7 +174,7 @@ func NewCollection[T entiter](c *mongo.Collection) Collecter[T] {
 
 // InsertOne insert one document.
 func (c *collection[T]) InsertOne(ctx context.Context, model T) error {
-	model.newMongoRecord()
+	model.entity().newMongoRecord()
 	_, err := c.Collection.InsertOne(ctx, model)
 	return err
 }
@@ -179,7 +183,7 @@ func (c *collection[T]) InsertOne(ctx context.Context, model T) error {
 func (c *collection[T]) InsertMany(ctx context.Context, models []T) error {
 	docs := make([]interface{}, len(models))
 	for i, model := range models {
-		model.newMongoRecord()
+		model.entity().newMongoRecord()
 		docs[i] = model
 	}
 
@@ -188,7 +192,7 @@ func (c *collection[T]) InsertMany(ctx context.Context, models []T) error {
 }
 
 // FindOne find one document.
-func (c *collection[T]) FindOne(ctx context.Context, options ...SetOption) (*T, error) {
+func (c *collection[T]) FindOne(ctx context.Context, options ...Option) (*T, error) {
 	opt := bindOptions(options...)
 	var model T
 	err := c.Collection.FindOne(ctx, opt.Filter).Decode(&model)
@@ -196,7 +200,7 @@ func (c *collection[T]) FindOne(ctx context.Context, options ...SetOption) (*T, 
 }
 
 // FindMany find many documents.
-func (c *collection[T]) FindMany(ctx context.Context, options ...SetOption) ([]T, error) {
+func (c *collection[T]) FindMany(ctx context.Context, options ...Option) ([]T, error) {
 	opt := bindOptions(options...)
 
 	var models []T
@@ -213,7 +217,7 @@ func (c *collection[T]) FindMany(ctx context.Context, options ...SetOption) ([]T
 }
 
 // UpdateOne update one document.
-func (c *collection[T]) UpdateOne(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) UpdateOne(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	opt.setUpdate()
 	_, err := c.Collection.UpdateOne(ctx, opt.Filter, opt.Update)
@@ -221,7 +225,7 @@ func (c *collection[T]) UpdateOne(ctx context.Context, options ...SetOption) err
 }
 
 // UpdateMany update many documents.
-func (c *collection[T]) UpdateMany(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) UpdateMany(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	opt.setUpdate()
 	_, err := c.Collection.UpdateMany(ctx, opt.Filter, opt.Update)
@@ -229,21 +233,21 @@ func (c *collection[T]) UpdateMany(ctx context.Context, options ...SetOption) er
 }
 
 // DeleteOne delete one document.
-func (c *collection[T]) DeleteOne(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) DeleteOne(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	_, err := c.Collection.DeleteOne(ctx, opt.Filter)
 	return err
 }
 
 // DeleteMany delete many documents.
-func (c *collection[T]) DeleteMany(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) DeleteMany(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	_, err := c.Collection.DeleteMany(ctx, opt.Filter)
 	return err
 }
 
 // SoftDeleteOne soft delete one document by setting deleted_at.
-func (c *collection[T]) SoftDeleteOne(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) SoftDeleteOne(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	opt.setSoftDelete()
 	_, err := c.Collection.UpdateOne(ctx, opt.Filter, opt.Update)
@@ -251,7 +255,7 @@ func (c *collection[T]) SoftDeleteOne(ctx context.Context, options ...SetOption)
 }
 
 // SoftDeleteMany soft delete many documents by setting deleted_at.
-func (c *collection[T]) SoftDeleteMany(ctx context.Context, options ...SetOption) error {
+func (c *collection[T]) SoftDeleteMany(ctx context.Context, options ...Option) error {
 	opt := bindOptions(options...)
 	opt.setSoftDelete()
 	_, err := c.Collection.UpdateMany(ctx, opt.Filter, opt.Update)
@@ -259,13 +263,13 @@ func (c *collection[T]) SoftDeleteMany(ctx context.Context, options ...SetOption
 }
 
 // Count count documents.
-func (c *collection[T]) Count(ctx context.Context, options ...SetOption) (int64, error) {
+func (c *collection[T]) Count(ctx context.Context, options ...Option) (int64, error) {
 	opt := bindOptions(options...)
 	return c.Collection.CountDocuments(ctx, opt.Filter)
 }
 
 // Aggregate aggregate documents.
-func (c *collection[T]) Aggregate(ctx context.Context, options ...SetOption) ([]T, error) {
+func (c *collection[T]) Aggregate(ctx context.Context, options ...Option) ([]T, error) {
 	opt := bindOptions(options...)
 
 	cursor, err := c.Collection.Aggregate(ctx, opt.Pipeline)
